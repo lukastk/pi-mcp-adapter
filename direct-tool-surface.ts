@@ -151,6 +151,8 @@ export function resolveDirectTools(
         prefixedName,
         description: tool.description ?? "",
         ...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
+        ...(tool.outputSchema !== undefined ? { outputSchema: tool.outputSchema } : {}),
+        ...(tool.annotations !== undefined ? { annotations: tool.annotations } : {}),
         ...(tool.uiResourceUri !== undefined ? { uiResourceUri: tool.uiResourceUri } : {}),
         ...(tool.uiStreamMode !== undefined ? { uiStreamMode: tool.uiStreamMode } : {}),
       });

@@ -1,3 +1,4 @@
+import { scriptMcpResult } from "./native-tools.ts";
 import type { AgentToolResult, AgentToolUpdateCallback, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { UrlElicitationRequiredError, type Client } from "@modelcontextprotocol/client";
 import type { McpExtensionState } from "./state.ts";
@@ -353,6 +354,8 @@ export function createDirectToolExecutor(
         });
         return {
           content: guarded.content,
+          structuredContent: scriptMcpResult(result as Record<string, unknown>),
+          isError: true,
           details: { error: "tool_error", server: spec.serverName, ...guardedMcpDetails(guarded) },
         };
       }
@@ -368,6 +371,7 @@ export function createDirectToolExecutor(
         });
         return {
           content: guarded.content,
+          structuredContent: scriptMcpResult(result as Record<string, unknown>),
           details: {
             server: spec.serverName,
             tool: spec.originalName,
@@ -386,6 +390,7 @@ export function createDirectToolExecutor(
       });
       return {
         content: guarded.content,
+        structuredContent: scriptMcpResult(result as Record<string, unknown>),
         details: { server: spec.serverName, tool: spec.originalName, ...guardedMcpDetails(guarded) },
       };
     } catch (error) {

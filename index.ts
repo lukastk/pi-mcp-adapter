@@ -1,3 +1,4 @@
+import { nativeToolFields, requireMcpResult } from "./native-tools.ts";
 import { withFileMutationQueue, type AgentToolResult, type AgentToolUpdateCallback, type ExtensionAPI, type ExtensionContext, type ToolInfo } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
 import { existsSync } from "node:fs";
@@ -373,6 +374,7 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   // directTools: "search" — registered inactive, activated by mcp({ search }) or a successful mcp({ tool }) call.
   const lazyDirectTools = new Set<string>();
   const searchActivatedTools = new Set<string>();
+  const nativeDirectDefinitions = new Map<string, Record<string, unknown>>();
   const toolRenderOptions = resolveMcpToolRenderOptions(earlyConfig.settings);
   const toolRenderShell = toolRenderOptions.resultRendering === "compact" ? "self" : "default";
   const renderMcpToolResult = createMcpToolResultRenderer(toolRenderOptions);
@@ -403,6 +405,8 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
       prefixedName: spec.prefixedName,
       description: spec.description,
       inputSchema: spec.inputSchema,
+      outputSchema: spec.outputSchema,
+      annotations: spec.annotations,
       resourceUri: spec.resourceUri,
       uiResourceUri: spec.uiResourceUri,
       uiStreamMode: spec.uiStreamMode,
@@ -422,12 +426,13 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
 
   function registerDirectTool(spec: DirectToolSpec, config: McpConfig): void {
     finalizationRegistrations?.add(spec.prefixedName);
-    callReentrant(() => (pi.registerTool as (tool: unknown) => unknown)({
+    const definition = {
       name: spec.prefixedName,
       label: `MCP: ${spec.originalName}`,
       description: spec.description || "(no description)",
       promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
       parameters: toToolParameters(normalizeDirectToolInputSchema(spec.inputSchema)),
+      ...nativeToolFields(spec),
       ...(config.settings?.strictDirectToolArguments === true
         ? { prepareArguments: (args: unknown) => prepareDirectToolArguments(spec.inputSchema, args) }
         : {}),
@@ -444,19 +449,21 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
         } catch (error) {
           if (guard && (isRuntimeGuardStale(guard) || (guard.owner && isOwnerAbortError(error, guard.owner)))) throw error;
           const message = error instanceof Error ? error.message : String(error);
-          return {
+          return requireMcpResult({
             content: [{ type: "text" as const, text: `MCP initialization failed for ${spec.serverName}: ${message}` }],
             details: { error: "init_failed", server: spec.serverName, message },
-          };
+          }, spec);
         }
         if (!guard) throw new Error("MCP runtime guard unavailable");
         assertRuntimeGuard(guard);
-        return executor(toolCallId, params, signal, onUpdate, ctx);
+        return requireMcpResult(await executor(toolCallId, params, signal, onUpdate, ctx), spec);
       },
       renderShell: toolRenderShell,
       renderCall: createMcpDirectToolCallRenderer(spec.prefixedName, toolRenderOptions),
       renderResult: renderMcpToolResult,
-    }));
+    };
+    nativeDirectDefinitions.set(spec.prefixedName, definition);
+    callReentrant(() => (pi.registerTool as (tool: unknown) => unknown)(definition));
   }
 
   // Pi registers a tool active. A lazy tool must not stay that way: hold every
@@ -521,7 +528,20 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
   function deactivateTools(toolNames: string[]): string[] {
     if (toolNames.length === 0) return [];
     const unregisterTool = (pi as ExtensionAPI & { unregisterTool?: (name: string) => boolean }).unregisterTool;
-    const unregistered = toolNames.filter((toolName) => callReentrant(() => unregisterTool?.(toolName)) === true);
+    const unregistered = toolNames.filter((toolName) => {
+      if (callReentrant(() => unregisterTool?.(toolName)) === true) {
+        nativeDirectDefinitions.delete(toolName);
+        return true;
+      }
+      const definition = nativeDirectDefinitions.get(toolName);
+      if (definition) {
+        // Inactive deferred tools are still callable. Withdraw them explicitly.
+        callReentrant(() => (pi.registerTool as (tool: unknown) => unknown)({ ...definition, exposure: "hidden" }));
+        nativeDirectDefinitions.delete(toolName);
+        fallbackDeactivatedTools.add(toolName);
+      }
+      return false;
+    });
     const fallbackNames = toolNames.filter((toolName) => !unregistered.includes(toolName));
     const activeTools = getActiveToolsIfReady();
     if (!activeTools) return unregistered;
@@ -1228,7 +1248,13 @@ function installMcpAdapter(pi: ExtensionAPI, options: McpAdapterOptions) {
     await initializationStarted;
   });
 
-  // Other extensions can reactivate registered tools after session_start.
+  // Native tool_search activates deferred tools through Pi's active set.
+  pi.on("tool_result", (event) => {
+    if (event.toolName !== "tool_search" || event.isError) return;
+    for (const name of getActiveToolsIfReady() ?? []) {
+      if (lazyDirectTools.has(name)) searchActivatedTools.add(name);
+    }
+  });
   pi.on("before_agent_start", holdLazyToolsInactive);
 
   pi.on("session_tree", (_event, ctx) => {

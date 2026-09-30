@@ -771,6 +771,8 @@ export interface DirectToolSpec {
   prefixedName: string;
   description: string;
   inputSchema?: unknown;
+  outputSchema?: unknown;
+  annotations?: McpToolAnnotations;
   resourceUri?: string;
   uiResourceUri?: string;
   uiStreamMode?: UiStreamMode;
