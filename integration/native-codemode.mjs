@@ -35,12 +35,14 @@ function events() { return fs.existsSync(log) ? fs.readFileSync(log, 'utf8').tri
 const starts = () => events().filter(e => e.event === 'start').length;
 const calls = name => events().filter(e => e.event === 'call' && e.name === name).length;
 const countBefore = starts();
+const unrelatedLog = path.join(process.env.HOME, 'unrelated.jsonl');
 const config = {
   settings: { deferWithMissingMetadata: true, exposeResources: false, scriptMode: false },
   mcpServers: { audit: { command: 'python3', args: [path.join(here, 'native-fixture.py')],
     env: { AUDIT_LOG: log }, lifecycle: 'lazy', directTools: 'search',
     ...(mode === 'approval' ? { approveTools: true } : {}),
-    ...(mode === 'idle' ? { idleTimeout: 0.001 } : {}) } },
+    ...(mode === 'idle' ? { idleTimeout: 0.001 } : {}) },
+    unused: { command: 'python3', args: [path.join(here, 'native-fixture.py')], env: { AUDIT_LOG: unrelatedLog }, lifecycle: 'lazy' } },
 };
 fs.writeFileSync(path.join(agentDir, 'mcp-adapter.json'), JSON.stringify(config));
 let pi;
@@ -149,6 +151,7 @@ try {
       await code('const r=await tools.audit_echo({value:"restored"}); if(r.structuredContent.value!=="restored") throw Error("restore failed");');
     }
   }
+  assert(!fs.existsSync(unrelatedLog), 'using audit must not bootstrap an unrelated lazy server');
   console.log(`PASS ${mode}: ${starts() - countBefore} fixture process(es)`);
 } finally {
   await session.extensionRunner.emit({ type: 'session_shutdown' });

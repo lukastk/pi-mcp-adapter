@@ -39,6 +39,10 @@ The adapter still owns MCP connections, authorization, metadata caching and UI.
 For zero startup connections with an empty/stale cache, set
 `settings.deferWithMissingMetadata: true`. An uncached server necessarily has no
 native tool catalog until an explicit `mcp({ connect: "server" })` discovers it.
+The fork also honors this setting at first-use initialization: it suppresses
+upstream's bootstrap-all-lazy-servers behavior when the metadata file is absent.
+A second unrelated lazy fixture is asserted never to start in every integration
+mode; the new assertion failed on the initial patch and passed after this fix.
 For our rig, native MCP is disabled via `extensions: ["-builtin:mcp"]` and
 `scriptMode: false` selects native codemode rather than exposing mcpScript too.
 

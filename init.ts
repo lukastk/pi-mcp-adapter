@@ -298,7 +298,9 @@ export async function initializeMcp(
     const cacheFileExists = existsSync(cachePath);
     cache = loadMetadataCache();
     if (!cacheFileExists) {
-      bootstrapAll = true;
+      // Deferred cold discovery must stay targeted on first use too: bootstrapping
+      // every lazy server here would wake unrelated remote workers.
+      bootstrapAll = config.settings?.deferWithMissingMetadata !== true;
       saveMetadataCache({ version: 1, servers: {} });
     } else if (!cache) {
       cache = { version: 1, servers: {} };
