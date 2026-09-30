@@ -58,12 +58,25 @@ For our rig, native MCP is disabled via `extensions: ["-builtin:mcp"]` and
   restoration, and actual idle disconnect/reconnect (30-second lifecycle tick).
 - Added unit tests cover metadata propagation, error contracts, image-block
   preservation, and unchanged resource behavior.
-- Full Vitest run after building the visualizer example: **2,170 passed, 4 failed**
-  across 155 files. The same cold-cache child-startup failure and three
-  request-header-command helper-cleanup failures reproduce in an unmodified
-  `c04a24b` worktree using the same Pi 0.99.1 dependencies. Do not call the whole
-  upstream suite green. Those failures are outside this patch and are not skipped
-  or patched around here. An earlier HTTP-CA timeout did not reproduce on rerun.
+- Final full Vitest run after building the visualizer example: **2,169 passed,
+  5 failed** across 155 files (an earlier run: 2,170 / 4). Every failure reproduces
+  in an unmodified `c04a24b` worktree using the same Pi 0.99.1 dependencies: one
+  cold-cache child-startup case and four request-header-command helper-cleanup
+  cases. The latter fluctuate with subprocess timing. They are not skipped or
+  patched around here; the full suite is not green. Our rig has no header-command
+  servers, and cold-cache startup uses explicit deferred discovery instead.
+  An earlier HTTP-CA timeout did not reproduce on rerun.
+- Initialization/lifecycle targeted checks: 52 + 162 passed; combined direct-tool,
+  manifest and lifecycle checks: 237 passed. These runs overlap.
+- Locked fast-uri updated to 3.1.8 for GHSA-hrr3-gc8f-f4qj. `npm audit --omit=dev`
+  reports zero runtime vulnerabilities. Development dependencies have separate
+  upstream advisories; the entire development graph is not claimed audit-clean.
+- Live mymain CLI smoke (not the hermetic fixture): native codemode navigated,
+  snapshotted and closed both local Brave and the Mac Studio SSH worker, retaining
+  structured MCP envelopes. Structured bash exit code 7 also passed. Native MCP
+  and mcpScript were confirmed absent. No paid model request was made.
+
+Uncommitted verification logs live in this box under `verification/2026-09-30/`.
 
 ## Maintenance
 
